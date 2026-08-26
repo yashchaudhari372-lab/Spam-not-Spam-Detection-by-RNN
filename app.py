@@ -8,7 +8,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 
 # ============================================================
-# Flask Application Configuration
+# Flask Application
 # ============================================================
 
 app = Flask(__name__)
@@ -18,94 +18,98 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "spam_rnn_model.keras")
 TOKENIZER_PATH = os.path.join(BASE_DIR, "tokenizer.pkl")
 
-# The uploaded model was inspected and expects:
+# ============================================================
+# Model Configuration
+# ============================================================
+# The provided model expects:
 # Input shape: (None, 100)
 # Output shape: (None, 1)
 # Output activation: sigmoid
+#
+# The provided tokenizer is used directly.
+# No new tokenizer is created.
+# No model is retrained.
+# ============================================================
+
 MAX_SEQUENCE_LENGTH = 100
-
-# Sigmoid output is interpreted using the standard binary threshold.
 THRESHOLD = 0.5
-
-
-# ============================================================
-# Load Model and Tokenizer ONCE when the application starts
-# ============================================================
 
 model = None
 tokenizer = None
 startup_error = None
 
 
-def load_resources():
-    """
-    Load the trained model and the existing tokenizer.
+# ============================================================
+# Load Model and Tokenizer Once
+# ============================================================
 
-    The model is NOT retrained or modified.
-    The tokenizer is loaded exactly as provided.
-    """
-    global model, tokenizer, startup_error
+def load_resources():
+    global model
+    global tokenizer
+    global startup_error
 
     try:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(
-                "The spam_rnn_model.keras file was not found."
+                "spam_rnn_model.keras was not found."
             )
 
         if not os.path.exists(TOKENIZER_PATH):
             raise FileNotFoundError(
-                "The tokenizer.pkl file was not found."
+                "tokenizer.pkl was not found."
             )
 
-        # Load the trained Keras model.
+        # Load the already-trained model.
         model = tf.keras.models.load_model(
             MODEL_PATH,
             compile=False
         )
 
-        # Load the existing tokenizer.
+        # Load the already-trained tokenizer.
         with open(TOKENIZER_PATH, "rb") as file:
             tokenizer = pickle.load(file)
 
-        # Basic compatibility validation.
+        # Verify tokenizer compatibility.
+        if not hasattr(tokenizer, "texts_to_sequences"):
+            raise ValueError(
+                "The uploaded tokenizer is not a valid Keras tokenizer."
+            )
+
+        # Verify model input shape.
         input_shape = model.input_shape
 
         if len(input_shape) != 2:
             raise ValueError(
-                f"Unexpected model input shape: {input_shape}"
+                "Unexpected model input format."
             )
 
         if input_shape[1] != MAX_SEQUENCE_LENGTH:
             raise ValueError(
-                f"Model expects sequence length {input_shape[1]}, "
-                f"but application is configured for {MAX_SEQUENCE_LENGTH}."
-            )
-
-        # The inspected tokenizer uses 5000 words.
-        # We do not recreate or modify it.
-        if not hasattr(tokenizer, "texts_to_sequences"):
-            raise ValueError(
-                "The uploaded tokenizer is not a compatible Keras tokenizer."
+                "The model sequence length does not match the "
+                "configured preprocessing length."
             )
 
         startup_error = None
 
     except Exception:
-        # Do not expose internal Python errors to users.
+        # Never expose internal exceptions to users.
         model = None
         tokenizer = None
+
         startup_error = (
-            "The trained model or tokenizer could not be loaded. "
-            "Please make sure both files are present and compatible."
+            "The machine-learning model could not be loaded. "
+            "Please make sure spam_rnn_model.keras and tokenizer.pkl "
+            "are present in the application folder."
         )
 
 
+# Load once when the application starts.
 load_resources()
 
 
 # ============================================================
-# Frontend HTML + CSS + JavaScript
-# Everything is intentionally inside app.py.
+# HTML + CSS + JavaScript
+# Everything is contained inside app.py.
 # ============================================================
 
 HTML_TEMPLATE = """
@@ -113,6 +117,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
 
     <meta
@@ -123,6 +128,7 @@ HTML_TEMPLATE = """
     <title>Spam Message Detector</title>
 
     <style>
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -131,6 +137,7 @@ HTML_TEMPLATE = """
 
         body {
             min-height: 100vh;
+
             font-family:
                 -apple-system,
                 BlinkMacSystemFont,
@@ -168,9 +175,9 @@ HTML_TEMPLATE = """
         }
 
         .card {
-            background: rgba(255, 255, 255, 0.96);
+            background: rgba(255, 255, 255, 0.97);
 
-            border: 1px solid rgba(226, 232, 240, 0.9);
+            border: 1px solid #e2e8f0;
 
             border-radius: 24px;
 
@@ -215,9 +222,7 @@ HTML_TEMPLATE = """
         h1 {
             font-size: 32px;
             font-weight: 750;
-
             color: #111827;
-
             margin-bottom: 8px;
         }
 
@@ -262,7 +267,7 @@ HTML_TEMPLATE = """
 
             color: #1e293b;
 
-            background: #ffffff;
+            background: white;
 
             outline: none;
 
@@ -284,7 +289,9 @@ HTML_TEMPLATE = """
 
         .button-row {
             display: flex;
+
             gap: 12px;
+
             margin-top: 18px;
         }
 
@@ -432,10 +439,6 @@ HTML_TEMPLATE = """
             line-height: 1.5;
         }
 
-        .hidden {
-            display: none;
-        }
-
         .footer {
             text-align: center;
 
@@ -447,6 +450,7 @@ HTML_TEMPLATE = """
         }
 
         @media (max-width: 600px) {
+
             body {
                 padding: 14px;
                 align-items: flex-start;
@@ -487,8 +491,11 @@ HTML_TEMPLATE = """
                 font-size: 26px;
             }
         }
+
     </style>
+
 </head>
+
 
 <body>
 
@@ -568,12 +575,7 @@ HTML_TEMPLATE = """
             </div>
 
             <div
-                class="prediction
-                {% if result == 'SPAM' %}
-                    spam
-                {% else %}
-                    ham
-                {% endif %}"
+                class="prediction {% if result == 'SPAM' %}spam{% else %}ham{% endif %}"
             >
                 {{ result }}
             </div>
@@ -607,186 +609,218 @@ HTML_TEMPLATE = """
 
 
         <div class="info">
-            Your message is processed locally by the trained
-            machine-learning model loaded by this Flask application.
+            Your message is analyzed using the trained RNN
+            machine-learning model.
         </div>
 
     </div>
 
 
     <div class="footer">
-        Spam Message Detector • Powered by TensorFlow & Flask
+        Spam Message Detector • TensorFlow + Flask
     </div>
 
 </div>
 
 
 <script>
-    const form = document.getElementById("predictionForm");
-    const button = document.getElementById("checkButton");
+
+    const form =
+        document.getElementById("predictionForm");
+
+    const button =
+        document.getElementById("checkButton");
+
 
     form.addEventListener("submit", function () {
+
         button.disabled = true;
+
         button.textContent = "Checking...";
+
     });
 
 
     function clearMessage() {
-        document.getElementById("message").value = "";
 
-        const textarea = document.getElementById("message");
+        const textarea =
+            document.getElementById("message");
+
+        textarea.value = "";
+
         textarea.focus();
 
-        const result = document.querySelector(".result");
-        const error = document.querySelector(".error");
+        const result =
+            document.querySelector(".result");
 
         if (result) {
             result.remove();
         }
 
-        /*
-         * Keep the startup error visible if the model failed
-         * to load. Only prediction errors are removed here.
-         */
     }
+
 </script>
 
+
 </body>
+
 </html>
 """
 
 
 # ============================================================
-# Home Route
+# Home Page
 # ============================================================
 
 @app.route("/", methods=["GET"])
 def home():
-    """
-    Display the main spam detection interface.
-    """
+
     return render_template_string(
         HTML_TEMPLATE,
+
         message="",
+
         result=None,
+
         confidence=None,
+
         error=None,
+
         startup_error=startup_error
     )
 
 
 # ============================================================
-# Prediction Route
+# Prediction
 # ============================================================
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    """
-    Receive a message using POST, preprocess it using the
-    existing tokenizer, pad it to 100 tokens, and run the
-    trained RNN model.
-    """
 
     message = request.form.get("message", "")
 
     # --------------------------------------------------------
-    # Validate user input
+    # Validate input
     # --------------------------------------------------------
 
     if not isinstance(message, str):
+
         return render_template_string(
             HTML_TEMPLATE,
+
             message="",
+
             result=None,
+
             confidence=None,
+
             error="Invalid message input.",
+
             startup_error=startup_error
         )
+
 
     message = message.strip()
 
+
     if not message:
+
         return render_template_string(
             HTML_TEMPLATE,
+
             message="",
+
             result=None,
+
             confidence=None,
+
             error="Please enter a message before checking it.",
+
             startup_error=startup_error
         )
 
-    # Prevent excessively large input.
+
     if len(message) > 5000:
+
         return render_template_string(
             HTML_TEMPLATE,
+
             message=message[:5000],
+
             result=None,
+
             confidence=None,
+
             error="Please enter a message shorter than 5000 characters.",
+
             startup_error=startup_error
         )
+
 
     # --------------------------------------------------------
-    # Check model/tokenizer availability
+    # Check model availability
     # --------------------------------------------------------
 
     if model is None or tokenizer is None:
+
         return render_template_string(
             HTML_TEMPLATE,
+
             message=message,
+
             result=None,
+
             confidence=None,
+
             error=(
                 "The spam detection model is currently unavailable. "
-                "Please check that the model and tokenizer files are "
-                "present in the application folder."
+                "Please check the model and tokenizer files."
             ),
+
             startup_error=startup_error
         )
 
+
     try:
-        # ----------------------------------------------------
-        # Text preprocessing
-        # ----------------------------------------------------
-        #
-        # The uploaded tokenizer was inspected and is a Keras
-        # Tokenizer configured with:
-        #
-        # lower=True
-        # char_level=False
-        # num_words=5000
-        # oov_token=None
-        #
-        # Therefore we use the tokenizer directly instead of
-        # manually creating a new vocabulary or tokenizer.
-        # ----------------------------------------------------
-
-        sequences = tokenizer.texts_to_sequences([message])
 
         # ----------------------------------------------------
-        # Pad/truncate to the EXACT model sequence length.
+        # Convert text into integer tokens.
         #
-        # The inspected model input shape is:
+        # IMPORTANT:
+        # The existing tokenizer.pkl is used directly.
+        # No new tokenizer is created.
+        # ----------------------------------------------------
+
+        sequences = tokenizer.texts_to_sequences(
+            [message]
+        )
+
+
+        # ----------------------------------------------------
+        # Pad/truncate to the sequence length expected
+        # by the trained model.
+        #
+        # Model input:
         # (None, 100)
         #
-        # Keras's default padding/truncating behavior is:
-        # padding='pre'
-        # truncating='pre'
-        #
-        # We explicitly specify these settings so that the
-        # preprocessing behavior is deterministic.
         # ----------------------------------------------------
 
         padded_sequence = pad_sequences(
+
             sequences,
+
             maxlen=MAX_SEQUENCE_LENGTH,
+
             padding="pre",
+
             truncating="pre",
+
             dtype="int32"
         )
 
+
         # ----------------------------------------------------
-        # Model prediction
+        # Run the trained RNN model.
         # ----------------------------------------------------
 
         prediction = model.predict(
@@ -794,67 +828,104 @@ def predict():
             verbose=0
         )
 
-        # Convert output safely into a scalar.
-        probability = float(np.asarray(prediction).reshape(-1)[0])
 
-        # Make sure the value is valid.
+        # Convert model output into a single probability.
+        probability = float(
+            np.asarray(prediction).reshape(-1)[0]
+        )
+
+
         if not np.isfinite(probability):
-            raise ValueError("The model returned an invalid prediction.")
 
-        # Clamp tiny floating-point deviations.
-        probability = float(np.clip(probability, 0.0, 1.0))
+            raise ValueError(
+                "Invalid model prediction."
+            )
+
+
+        probability = float(
+            np.clip(probability, 0.0, 1.0)
+        )
+
 
         # ----------------------------------------------------
         # Classification
         #
-        # The inspected model has a single sigmoid output,
-        # therefore values >= 0.5 are classified as SPAM.
+        # The model has a sigmoid output.
+        #
+        # >= 0.5 -> SPAM
+        # < 0.5  -> NOT SPAM
         # ----------------------------------------------------
 
         if probability >= THRESHOLD:
+
             result = "SPAM"
 
-            # Probability that the message belongs to SPAM.
             confidence = probability
 
         else:
+
             result = "NOT SPAM"
 
-            # Probability that the message belongs to HAM.
             confidence = 1.0 - probability
 
-        confidence_percent = round(confidence * 100, 2)
 
-        # ----------------------------------------------------
-        # Render prediction result
-        # ----------------------------------------------------
+        confidence_percent = round(
+            confidence * 100,
+            2
+        )
+
 
         return render_template_string(
+
             HTML_TEMPLATE,
+
             message=message,
+
             result=result,
+
             confidence=confidence_percent,
+
             error=None,
+
             startup_error=None
         )
 
+
     except Exception:
-        # Never expose the internal Python exception to users.
+
+        # Never expose the internal exception.
         return render_template_string(
+
             HTML_TEMPLATE,
+
             message=message,
+
             result=None,
+
             confidence=None,
+
             error=(
                 "Sorry, the message could not be analyzed. "
-                "Please try again with a different message."
+                "Please try again."
             ),
+
             startup_error=None
         )
 
 
 # ============================================================
-# Application Entry Point
+# Local Development
+# ============================================================
+#
+# For local testing:
+#
+#     python app.py
+#
+# For Render production deployment:
+#
+#     gunicorn app:app
+#
+# Render will use the Gunicorn command instead of this block.
 # ============================================================
 
 if __name__ == "__main__":
