@@ -1,5 +1,7 @@
-Flask
+streamlit
 tensorflow
+keras
 numpy
+pandas
 scikit-learn
-gunicorn
+plotly
